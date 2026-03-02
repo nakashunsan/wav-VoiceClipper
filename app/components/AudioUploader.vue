@@ -33,7 +33,7 @@
 import { useSharedAudioContext } from '~/composables/useSharedAudioContext'
 const emit = defineEmits<{
   fileLoaded: [buffer: AudioBuffer]
-  loading: [isLoading: boolean, message: string]
+  loading: [isLoading: boolean, message: string, progress?: number]
 }>()
 
 const fileInput = ref<HTMLInputElement>()
@@ -53,13 +53,51 @@ async function handleFileSelect(event: Event) {
     
     emit('loading', true, isLargeFile 
       ? `ファイルを読み込んでいます...\n大容量ファイル（${fileSizeMB.toFixed(0)}MB）のため、時間がかかる場合があります`
-      : 'ファイルを読み込んでいます...'
+      : 'ファイルを読み込んでいます...', 0
     )
     
-    const arrayBuffer = await file.arrayBuffer()
+    // FileReaderでプログレス付き読み込み
+    const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader()
+      
+      reader.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const progress = (e.loaded / e.total) * 50 // 読み込みは全体の50%
+          emit('loading', true, isLargeFile 
+            ? `ファイルを読み込んでいます...\n大容量ファイル（${fileSizeMB.toFixed(0)}MB）のため、時間がかかる場合があります`
+            : 'ファイルを読み込んでいます...', progress
+          )
+        }
+      }
+      
+      reader.onload = () => {
+        resolve(reader.result as ArrayBuffer)
+      }
+      
+      reader.onerror = () => {
+        reject(new Error('ファイルの読み込みに失敗しました'))
+      }
+      
+      reader.readAsArrayBuffer(file)
+    })
+    
+    emit('loading', true, 'オーディオをデコード中...', 50)
+    
     // 共有 AudioContext を使ってデコードすることで、ブラウザの AudioContext 制限に引っかかりにくくする
     const audioContext = useSharedAudioContext()
-    const buffer = await audioContext.decodeAudioData(arrayBuffer)
+    
+    // デコード処理（プログレスは推定）
+    const decodePromise = audioContext.decodeAudioData(arrayBuffer)
+    
+    // デコード中のプログレス表示（推定）
+    const progressInterval = setInterval(() => {
+      emit('loading', true, 'オーディオをデコード中...', 50 + Math.random() * 40)
+    }, 200)
+    
+    const buffer = await decodePromise
+    clearInterval(progressInterval)
+    
+    emit('loading', true, '完了', 100)
     
     const duration = buffer.duration.toFixed(2)
     const sampleRate = buffer.sampleRate
@@ -72,7 +110,7 @@ async function handleFileSelect(event: Event) {
   } catch (error) {
     alert('WAVファイルの読み込みに失敗しました: ' + (error as Error).message)
   } finally {
-    emit('loading', false, '')
+    emit('loading', false, '', 0)
   }
 }
 </script>

@@ -112,7 +112,7 @@
     <HelpModal v-model="showHelp" />
     
     <!-- Loading Overlay -->
-    <LoadingOverlay v-model="isLoading" :message="loadingMessage" />
+    <LoadingOverlay v-model="isLoading" :message="loadingMessage" :progress="loadingProgress" />
   </div>
 </template>
 
@@ -129,6 +129,7 @@ const exportQueue = ref<Array<any>>([])
 const showHelp = ref(false)
 const isLoading = ref(false)
 const loadingMessage = ref('')
+const loadingProgress = ref<number | undefined>(undefined)
 const playbackPosition = ref<number | undefined>(undefined)
 const waveformViewerRef = ref<any>(null)
 const detectionSummary = ref<{ count: number; totalDuration: number } | null>(null)
@@ -202,9 +203,10 @@ function handleFileLoaded(buffer: AudioBuffer) {
   detectionSummary.value = null
 }
 
-function handleLoading(loading: boolean, message: string) {
+function handleLoading(loading: boolean, message: string, progress?: number) {
   isLoading.value = loading
   loadingMessage.value = message
+  loadingProgress.value = progress
 }
 
 async function handleDetect(options: any) {

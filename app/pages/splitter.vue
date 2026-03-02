@@ -139,7 +139,7 @@
     </template>
 
     <!-- Loading Overlay -->
-    <LoadingOverlay v-model="isLoading" :message="loadingMessage" />
+    <LoadingOverlay v-model="isLoading" :message="loadingMessage" :progress="loadingProgress" />
   </div>
 </template>
 
@@ -163,6 +163,7 @@ const segments = ref<Array<{ buffer: AudioBuffer; start: number; end: number; in
 const isSplitting = ref(false)
 const isLoading = ref(false)
 const loadingMessage = ref('')
+const loadingProgress = ref<number | undefined>(undefined)
 
 const { splitAudioByDuration, audioBufferToWav } = useAudioSplitter()
 
@@ -188,11 +189,46 @@ async function handleFileSelect(event: Event) {
   loadingMessage.value = isLargeFile
     ? `ファイルを読み込んでいます...\n大容量ファイル（${fileSizeMB.toFixed(0)}MB）のため、時間がかかる場合があります`
     : 'ファイルを読み込んでいます...'
+  loadingProgress.value = 0
 
   try {
-    const arrayBuffer = await file.arrayBuffer()
+    // FileReaderでプログレス付き読み込み
+    const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader()
+      
+      reader.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const progress = (e.loaded / e.total) * 50 // 読み込みは全体の50%
+          loadingProgress.value = progress
+        }
+      }
+      
+      reader.onload = () => {
+        resolve(reader.result as ArrayBuffer)
+      }
+      
+      reader.onerror = () => {
+        reject(new Error('ファイルの読み込みに失敗しました'))
+      }
+      
+      reader.readAsArrayBuffer(file)
+    })
+    
+    loadingMessage.value = 'オーディオをデコード中...'
+    loadingProgress.value = 50
+    
     const audioContext = useSharedAudioContext()
+    
+    // デコード中のプログレス表示（推定）
+    const progressInterval = setInterval(() => {
+      loadingProgress.value = 50 + Math.random() * 40
+    }, 200)
+    
     const buffer = await audioContext.decodeAudioData(arrayBuffer)
+    clearInterval(progressInterval)
+    
+    loadingMessage.value = '完了'
+    loadingProgress.value = 100
     
     audioBuffer.value = buffer
     
@@ -209,6 +245,7 @@ async function handleFileSelect(event: Event) {
     alert('WAVファイルの読み込みに失敗しました: ' + (error as Error).message)
   } finally {
     isLoading.value = false
+    loadingProgress.value = undefined
   }
 }
 
@@ -218,13 +255,16 @@ async function handleSplit() {
   isSplitting.value = true
   isLoading.value = true
   loadingMessage.value = '分割中...'
+  loadingProgress.value = 0
   
   try {
     const result = await splitAudioByDuration(
       audioBuffer.value,
       segmentDuration.value,
       (current, total) => {
+        const progress = (current / total) * 100
         loadingMessage.value = `分割中... (${current}/${total})`
+        loadingProgress.value = progress
       }
     )
     
@@ -234,6 +274,7 @@ async function handleSplit() {
   } finally {
     isSplitting.value = false
     isLoading.value = false
+    loadingProgress.value = undefined
   }
 }
 
@@ -255,6 +296,7 @@ function downloadSegment(segment: { buffer: AudioBuffer; index: number }) {
 async function downloadAll() {
   isLoading.value = true
   loadingMessage.value = 'ZIPファイルを作成中...'
+  loadingProgress.value = 0
   
   try {
     const files: Array<{ name: string; data: Uint8Array }> = []
@@ -269,11 +311,14 @@ async function downloadAll() {
         data: new Uint8Array(arrayBuffer)
       })
       
+      const progress = ((i + 1) / segments.value.length) * 100
       loadingMessage.value = `ZIPファイルを作成中... (${i + 1}/${segments.value.length})`
+      loadingProgress.value = progress
       await new Promise(resolve => setTimeout(resolve, 10))
     }
     
     loadingMessage.value = 'ダウンロード準備中...'
+    loadingProgress.value = 100
     const zipBlob = await createZipFromFiles(files)
     
     const baseName = fileName.value.replace(/\.wav$/i, '')
@@ -287,6 +332,7 @@ async function downloadAll() {
     alert('ZIPファイルの作成に失敗しました: ' + (error as Error).message)
   } finally {
     isLoading.value = false
+    loadingProgress.value = undefined
   }
 }
 
