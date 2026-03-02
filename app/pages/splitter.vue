@@ -144,7 +144,6 @@
 </template>
 
 <script setup lang="ts">
-import JSZip from 'jszip'
 import { useSharedAudioContext } from '~/composables/useSharedAudioContext'
 
 useHead({
@@ -252,19 +251,24 @@ async function downloadAll() {
   loadingMessage.value = 'ZIPファイルを作成中...'
   
   try {
-    const zip = new JSZip()
+    const files: Array<{ name: string; data: Uint8Array }> = []
     
     for (let i = 0; i < segments.value.length; i++) {
       const segment = segments.value[i]
       const blob = audioBufferToWav(segment.buffer)
-      zip.file(getSegmentFileName(segment.index), blob)
+      const arrayBuffer = await blob.arrayBuffer()
+      
+      files.push({
+        name: getSegmentFileName(segment.index),
+        data: new Uint8Array(arrayBuffer)
+      })
       
       loadingMessage.value = `ZIPファイルを作成中... (${i + 1}/${segments.value.length})`
       await new Promise(resolve => setTimeout(resolve, 10))
     }
     
     loadingMessage.value = 'ダウンロード準備中...'
-    const zipBlob = await zip.generateAsync({ type: 'blob' })
+    const zipBlob = await createZipFromFiles(files)
     
     const baseName = fileName.value.replace(/\.wav$/i, '')
     const url = URL.createObjectURL(zipBlob)
@@ -278,6 +282,89 @@ async function downloadAll() {
   } finally {
     isLoading.value = false
   }
+}
+
+async function createZipFromFiles(files: Array<{ name: string; data: Uint8Array }>): Promise<Blob> {
+  const encoder = new TextEncoder()
+  let offset = 0
+  const localHeaders: Array<{ header: Uint8Array; data: Uint8Array; offset: number }> = []
+  const centralHeaders: Uint8Array[] = []
+  
+  files.forEach(file => {
+    const nameBytes = encoder.encode(file.name)
+    const crc = crc32(file.data)
+    
+    const localHeader = new Uint8Array(30 + nameBytes.length)
+    const localView = new DataView(localHeader.buffer)
+    localView.setUint32(0, 0x04034b50, true)
+    localView.setUint16(4, 20, true)
+    localView.setUint16(8, 0, true)
+    localView.setUint32(14, crc, true)
+    localView.setUint32(18, file.data.length, true)
+    localView.setUint32(22, file.data.length, true)
+    localView.setUint16(26, nameBytes.length, true)
+    localHeader.set(nameBytes, 30)
+    
+    localHeaders.push({ header: localHeader, data: file.data, offset })
+    offset += localHeader.length + file.data.length
+    
+    const centralHeader = new Uint8Array(46 + nameBytes.length)
+    const centralView = new DataView(centralHeader.buffer)
+    centralView.setUint32(0, 0x02014b50, true)
+    centralView.setUint16(4, 20, true)
+    centralView.setUint16(6, 20, true)
+    centralView.setUint16(12, 0, true)
+    centralView.setUint32(16, crc, true)
+    centralView.setUint32(20, file.data.length, true)
+    centralView.setUint32(24, file.data.length, true)
+    centralView.setUint16(28, nameBytes.length, true)
+    centralView.setUint32(42, localHeaders[localHeaders.length - 1].offset, true)
+    centralHeader.set(nameBytes, 46)
+    
+    centralHeaders.push(centralHeader)
+  })
+  
+  const centralDirOffset = offset
+  const centralDirSize = centralHeaders.reduce((sum, h) => sum + h.length, 0)
+  
+  const endRecord = new Uint8Array(22)
+  const endView = new DataView(endRecord.buffer)
+  endView.setUint32(0, 0x06054b50, true)
+  endView.setUint16(8, files.length, true)
+  endView.setUint16(10, files.length, true)
+  endView.setUint32(12, centralDirSize, true)
+  endView.setUint32(16, centralDirOffset, true)
+  
+  const totalSize = offset + centralDirSize + endRecord.length
+  const zipData = new Uint8Array(totalSize)
+  let pos = 0
+  
+  localHeaders.forEach(({ header, data }) => {
+    zipData.set(header, pos)
+    pos += header.length
+    zipData.set(data, pos)
+    pos += data.length
+  })
+  
+  centralHeaders.forEach(header => {
+    zipData.set(header, pos)
+    pos += header.length
+  })
+  
+  zipData.set(endRecord, pos)
+  
+  return new Blob([zipData], { type: 'application/zip' })
+}
+
+function crc32(data: Uint8Array): number {
+  let crc = 0xFFFFFFFF
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data[i]
+    for (let j = 0; j < 8; j++) {
+      crc = (crc >>> 1) ^ (0xEDB88320 & -(crc & 1))
+    }
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0
 }
 
 function formatTime(seconds: number): string {
