@@ -12,20 +12,22 @@
         無音検出で自動的に音声区間を抽出。<br>
         ブラウザだけで動作するので、ファイルをアップロードする必要はありません。
       </p>
-      <NuxtLink
-        to="/tool"
-        class="inline-flex items-center gap-2 px-8 py-4 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl font-medium text-lg"
-      >
-        <Icon name="mdi:play-circle" class="text-2xl" />
-        今すぐ使ってみる
-      </NuxtLink>
-      <NuxtLink
-        to="/splitter"
-        class="inline-flex items-center gap-2 px-8 py-4 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl font-medium text-lg"
-      >
-        <Icon name="mdi:call-split" class="text-2xl" />
-        ファイル分割ツール
-      </NuxtLink>
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+        <NuxtLink
+          to="/tool"
+          class="inline-flex items-center gap-2 px-8 py-4 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl font-medium text-lg"
+        >
+          <Icon name="mdi:play-circle" class="text-2xl" />
+          今すぐ使ってみる
+        </NuxtLink>
+        <NuxtLink
+          to="/splitter"
+          class="inline-flex items-center gap-2 px-8 py-4 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl font-medium text-lg"
+        >
+          <Icon name="mdi:call-split" class="text-2xl" />
+          ファイル分割ツール
+        </NuxtLink>
+      </div>
     </section>
 
     <!-- Tools Section -->
