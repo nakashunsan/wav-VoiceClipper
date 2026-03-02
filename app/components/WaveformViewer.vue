@@ -12,7 +12,9 @@
       <button @click="resetZoom" class="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition">
         リセット
       </button>
-      <span class="text-primary-600 font-semibold">{{ Math.round(zoomLevel * 100) }}%</span>
+      <span class="text-primary-600 font-semibold">
+        {{ zoomLevel >= 100 ? Math.round(zoomLevel).toLocaleString() : Math.round(zoomLevel * 100) }}{{ zoomLevel >= 100 ? '×' : '%' }}
+      </span>
       
       <label class="flex items-center gap-2 cursor-pointer">
         <input v-model="compressSilence" type="checkbox" class="w-4 h-4 text-primary-600 rounded" />
@@ -52,6 +54,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   regionSelected: [index: number]
   selectionChanged: [selection: { start: number; end: number }]
+  seekTo: [time: number]
 }>()
 
 const canvas = ref<HTMLCanvasElement>()
@@ -63,6 +66,7 @@ const zoomLevel = ref(1)
 const compressSilence = ref(false)
 const canvasWidth = ref(800)
 const isDragging = ref(false)
+const dragStartTime = ref(0)
 const selectionStart = ref(0)
 const selectionEnd = ref(0)
 const showSelection = ref(false)
@@ -119,7 +123,9 @@ onMounted(() => {
 })
 
 function zoomIn() {
-  zoomLevel.value = Math.min(zoomLevel.value * 1.5, 50)
+  // 上限を大幅に引き上げ（50 → 10000）
+  // 長時間ファイルでも細かく拡大できるように
+  zoomLevel.value = Math.min(zoomLevel.value * 1.5, 10000)
 }
 
 function zoomOut() {
@@ -140,11 +146,21 @@ function drawWaveform() {
   // デバイスピクセル比を取得（Retinaディスプレイ対応）
   const dpr = window.devicePixelRatio || 1
   
+  // ブラウザのキャンバスサイズ制限を考慮（多くのブラウザで32767px）
+  // 超大きいキャンバスはメモリエラーを起こすので、dprを調整
+  const maxCanvasSize = 32767
+  let adjustedDpr = dpr
+  
+  if (width * dpr > maxCanvasSize) {
+    adjustedDpr = Math.floor(maxCanvasSize / width)
+    console.warn(`Canvas size limited: ${width * dpr}px → ${width * adjustedDpr}px`)
+  }
+  
   canvasWidth.value = width
   
-  // 高解像度対応：実際のピクセル数を増やす
-  canvas.value.width = width * dpr
-  canvas.value.height = height * dpr
+  // 高解像度対応：実際のピクセル数を増やす（制限内で）
+  canvas.value.width = width * adjustedDpr
+  canvas.value.height = height * adjustedDpr
   
   // CSSサイズは元のまま
   canvas.value.style.width = width + 'px'
@@ -154,48 +170,102 @@ function drawWaveform() {
   if (!ctx) return
   
   // スケーリングを適用（毎回リセットしてから設定）
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.setTransform(adjustedDpr, 0, 0, adjustedDpr, 0, 0)
   ctx.clearRect(0, 0, width, height)
   
   const data = props.audioBuffer.getChannelData(0)
-  const step = Math.ceil(data.length / width)
+  const dataLength = data.length
   const amp = height / 2
   
   // 背景
   ctx.fillStyle = '#f9fafb'
   ctx.fillRect(0, 0, width, height)
   
+  // 大容量ファイル対策: ダウンサンプリング比率を動的に調整
+  // 1GB WAVファイル (約48000Hz * 600秒 = 28,800,000サンプル) でも高速化
+  const samplesPerPixel = Math.ceil(dataLength / width)
+  const downsampleFactor = Math.max(1, Math.floor(samplesPerPixel / 100))
+  const step = samplesPerPixel * downsampleFactor
+  
   // 波形を描画（より滑らかに）
   ctx.lineWidth = 1.5
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
 
-  for (let i = 0; i < width; i++) {
-    let min = 1.0
-    let max = -1.0
+  // バッチ処理で描画を高速化
+  const batchSize = 1000
+  let currentBatch = 0
+  
+  const drawBatch = () => {
+    const startX = currentBatch * batchSize
+    const endX = Math.min(startX + batchSize, width)
     
-    // より多くのサンプルを見て平均化
-    for (let j = 0; j < step; j++) {
-      const datum = data[(i * step) + j]
-      if (datum !== undefined) {
-        if (datum < min) min = datum
-        if (datum > max) max = datum
+    for (let i = startX; i < endX; i++) {
+      let min = 1.0
+      let max = -1.0
+      
+      // ダウンサンプリングしながら最小・最大値を取得
+      const startIdx = i * samplesPerPixel
+      const endIdx = Math.min(startIdx + samplesPerPixel, dataLength)
+      
+      for (let j = startIdx; j < endIdx; j += downsampleFactor) {
+        const datum = data[j]
+        if (datum !== undefined) {
+          if (datum < min) min = datum
+          if (datum > max) max = datum
+        }
       }
+      
+      const y1 = (1 + min) * amp
+      const y2 = (1 + max) * amp
+
+      // 無音圧縮表示モードでは、音量の小さい部分を薄く描画して判別しやすくする
+      const peak = Math.max(Math.abs(min), Math.abs(max))
+      const isSilent = compressSilence.value && peak < 0.02
+
+      ctx.strokeStyle = isSilent ? '#d1d5db' : '#667eea'
+      ctx.beginPath()
+      ctx.moveTo(i + 0.5, y1)
+      ctx.lineTo(i + 0.5, y2)
+      ctx.stroke()
     }
     
-    const y1 = (1 + min) * amp
-    const y2 = (1 + max) * amp
-
-    // 無音圧縮表示モードでは、音量の小さい部分を薄く描画して判別しやすくする
-    const peak = Math.max(Math.abs(min), Math.abs(max))
-    const isSilent = compressSilence.value && peak < 0.02
-
-    ctx.strokeStyle = isSilent ? '#d1d5db' : '#667eea'
-    ctx.beginPath()
-    ctx.moveTo(i + 0.5, y1)
-    ctx.lineTo(i + 0.5, y2)
-    ctx.stroke()
+    currentBatch++
+    
+    // 次のバッチがあれば非同期で処理
+    if (endX < width) {
+      requestAnimationFrame(drawBatch)
+    } else {
+      // 描画完了後に中央線と検出区間を描画
+      finishDrawing()
+    }
   }
+  
+  // 最初のバッチを開始
+  drawBatch()
+}
+
+function finishDrawing() {
+  if (!canvas.value) return
+  
+  const ctx = canvas.value.getContext('2d')
+  if (!ctx) return
+  
+  const width = canvasWidth.value
+  const height = 250
+  const amp = height / 2
+  const dpr = window.devicePixelRatio || 1
+  
+  // キャンバスサイズ制限を考慮
+  const maxCanvasSize = 32767
+  let adjustedDpr = dpr
+  
+  if (width * dpr > maxCanvasSize) {
+    adjustedDpr = Math.floor(maxCanvasSize / width)
+  }
+  
+  // スケーリングを再適用
+  ctx.setTransform(adjustedDpr, 0, 0, adjustedDpr, 0, 0)
   
   // 中央線を描画
   ctx.strokeStyle = '#e5e7eb'
@@ -253,6 +323,7 @@ function handleMouseDown(event: MouseEvent) {
   const x = event.clientX - rect.left
   
   isDragging.value = true
+  dragStartTime.value = Date.now()
   selectionStart.value = x
   selectionEnd.value = x
   showSelection.value = true
@@ -268,9 +339,23 @@ function handleMouseMove(event: MouseEvent) {
 
 function handleMouseUp() {
   if (!isDragging.value) return
+  
+  const dragDuration = Date.now() - dragStartTime.value
+  const dragDistance = Math.abs(selectionEnd.value - selectionStart.value)
+  
   isDragging.value = false
   
-  if (Math.abs(selectionEnd.value - selectionStart.value) > 5) {
+  // クリック判定: 150ms以内 かつ 移動距離5px以内
+  if (dragDuration < 150 && dragDistance < 5) {
+    // シングルクリック: 再生位置を変更
+    const duration = props.audioBuffer.duration
+    const width = canvasWidth.value
+    const clickTime = (selectionStart.value / width) * duration
+    
+    emit('seekTo', clickTime)
+    showSelection.value = false
+  } else if (dragDistance > 5) {
+    // ドラッグ: 範囲選択
     const duration = props.audioBuffer.duration
     const width = canvasWidth.value
     
@@ -281,6 +366,9 @@ function handleMouseUp() {
     const end = (right / width) * duration
     
     emit('selectionChanged', { start, end })
+  } else {
+    // 短いドラッグは無視
+    showSelection.value = false
   }
 }
 </script>

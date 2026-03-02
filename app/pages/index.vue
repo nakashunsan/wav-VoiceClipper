@@ -19,6 +19,50 @@
         <Icon name="mdi:play-circle" class="text-2xl" />
         今すぐ使ってみる
       </NuxtLink>
+      <NuxtLink
+        to="/splitter"
+        class="inline-flex items-center gap-2 px-8 py-4 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl font-medium text-lg"
+      >
+        <Icon name="mdi:call-split" class="text-2xl" />
+        ファイル分割ツール
+      </NuxtLink>
+    </section>
+
+    <!-- Tools Section -->
+    <section class="mb-12">
+      <div class="grid md:grid-cols-2 gap-6">
+        <NuxtLink
+          to="/tool"
+          class="bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl shadow-lg p-8 text-white hover:shadow-xl transition-all transform hover:scale-105"
+        >
+          <div class="flex items-center gap-4 mb-4">
+            <div class="w-16 h-16 bg-white/20 rounded-lg flex items-center justify-center">
+              <Icon name="mdi:content-cut" class="text-4xl" />
+            </div>
+            <div>
+              <h3 class="text-2xl font-bold">音声切り抜きツール</h3>
+              <p class="text-white/80 text-sm">メインツール</p>
+            </div>
+          </div>
+          <p class="text-white/90">無音検出で自動的に音声区間を抽出し、必要な部分だけを切り出します。</p>
+        </NuxtLink>
+
+        <NuxtLink
+          to="/splitter"
+          class="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl shadow-lg p-8 text-white hover:shadow-xl transition-all transform hover:scale-105"
+        >
+          <div class="flex items-center gap-4 mb-4">
+            <div class="w-16 h-16 bg-white/20 rounded-lg flex items-center justify-center">
+              <Icon name="mdi:call-split" class="text-4xl" />
+            </div>
+            <div>
+              <h3 class="text-2xl font-bold">ファイル分割ツール</h3>
+              <p class="text-white/80 text-sm">サブツール</p>
+            </div>
+          </div>
+          <p class="text-white/90">大容量のWAVファイルを扱いやすいサイズに分割します。</p>
+        </NuxtLink>
+      </div>
     </section>
 
     <!-- Features Section -->

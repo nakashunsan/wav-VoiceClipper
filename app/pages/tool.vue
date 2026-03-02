@@ -3,6 +3,15 @@
     <!-- Page Title -->
     <div class="text-center mb-8">
       <p class="text-gray-600 text-sm mb-6">WAVファイルから必要な部分を簡単に切り抜き</p>
+      <div class="flex items-center justify-center gap-4">
+        <NuxtLink to="/" class="text-primary-500 hover:text-primary-600 text-sm">
+          <Icon name="mdi:home" class="inline" /> ホームに戻る
+        </NuxtLink>
+        <span class="text-gray-300">|</span>
+        <NuxtLink to="/splitter" class="text-green-500 hover:text-green-600 text-sm">
+          <Icon name="mdi:call-split" class="inline" /> ファイル分割ツール
+        </NuxtLink>
+      </div>
     </div>
 
     <!-- Main Content -->
@@ -45,6 +54,7 @@
           :playback-position="playbackPosition"
           @region-selected="handleRegionSelected"
           @selection-changed="handleSelectionChanged"
+          @seek-to="handleSeekTo"
         />
         
         <RegionNavigation
@@ -377,5 +387,15 @@ function handleTimeUpdate(times: { start: number; end: number }) {
   selectionStart.value = times.start
   selectionEnd.value = times.end
   hasSelection.value = true
+}
+
+function handleSeekTo(time: number) {
+  if (!audioBuffer.value) return
+  
+  // 再生中の場合は停止して新しい位置から再生
+  stopAudio()
+  playSelection(audioBuffer.value, time, audioBuffer.value.duration, (currentTime) => {
+    playbackPosition.value = currentTime
+  })
 }
 </script>
