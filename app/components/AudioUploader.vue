@@ -48,7 +48,13 @@ async function handleFileSelect(event: Event) {
   fileName.value = file.name
 
   try {
-    emit('loading', true, 'ファイルを読み込んでいます...')
+    const fileSizeMB = file.size / 1024 / 1024
+    const isLargeFile = fileSizeMB > 100
+    
+    emit('loading', true, isLargeFile 
+      ? `ファイルを読み込んでいます...\n大容量ファイル（${fileSizeMB.toFixed(0)}MB）のため、時間がかかる場合があります`
+      : 'ファイルを読み込んでいます...'
+    )
     
     const arrayBuffer = await file.arrayBuffer()
     // 共有 AudioContext を使ってデコードすることで、ブラウザの AudioContext 制限に引っかかりにくくする

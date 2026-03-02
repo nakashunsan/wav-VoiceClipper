@@ -13,7 +13,7 @@
         >
           <div class="text-center">
             <div class="inline-block w-16 h-16 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mb-4" />
-            <p class="text-white text-xl font-semibold">{{ message }}</p>
+            <p class="text-white text-xl font-semibold whitespace-pre-line">{{ message }}</p>
           </div>
         </div>
       </Transition>

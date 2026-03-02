@@ -180,8 +180,14 @@ async function handleFileSelect(event: Event) {
   if (!file) return
 
   fileName.value = file.name
+  
+  const fileSizeMB = file.size / 1024 / 1024
+  const isLargeFile = fileSizeMB > 100
+  
   isLoading.value = true
-  loadingMessage.value = 'ファイルを読み込んでいます...'
+  loadingMessage.value = isLargeFile
+    ? `ファイルを読み込んでいます...\n大容量ファイル（${fileSizeMB.toFixed(0)}MB）のため、時間がかかる場合があります`
+    : 'ファイルを読み込んでいます...'
 
   try {
     const arrayBuffer = await file.arrayBuffer()
